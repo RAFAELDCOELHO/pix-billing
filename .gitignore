@@ -44,3 +44,5 @@ pip-audit-report.json
 .vscode/
 *.swp
 *.swo
+__pycache__/
+*.pyc
