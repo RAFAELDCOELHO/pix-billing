@@ -130,7 +130,7 @@ class AuditLogger:
         action: str,
         outcome: str,
         details: dict[str, Any] | None = None,
-        source_ip: str = "0.0.0.0",
+        source_ip: str = "unknown",
         severity: str = "INFO",
     ) -> AuditEntry:
         """Append a structured audit event to the chain."""
