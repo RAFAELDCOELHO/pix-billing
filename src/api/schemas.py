@@ -9,7 +9,13 @@ from pydantic import BaseModel, ConfigDict, Field, field_validator
 
 
 class _Base(BaseModel):
-    model_config = ConfigDict(extra="forbid", str_strip_whitespace=True)
+    """Strict-mode base. No extra fields, no implicit type coercion."""
+
+    model_config = ConfigDict(
+        extra="forbid",
+        strict=True,
+        str_strip_whitespace=True,
+    )
 
 
 # ─── Charges ───────────────────────────────────────────────────────────────

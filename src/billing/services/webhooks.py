@@ -28,6 +28,7 @@ from src.billing.security import (
     get_audit_logger,
     hmac_sign,
 )
+from src.billing.url_safety import UnsafeUrlError, validate_webhook_url
 
 log = logging.getLogger("pix_billing.webhooks")
 
@@ -76,10 +77,11 @@ async def register_endpoint(
 ) -> CreatedEndpoint:
     """Register a new webhook endpoint and return the freshly minted secret."""
     settings = get_settings()
-    if not url.startswith(("http://", "https://")):
-        raise WebhookError("url must be http(s)")
-    if settings.environment == "production" and not url.startswith("https://"):
-        raise WebhookError("url must be https in production")
+    require_https = settings.environment == "production"
+    try:
+        validate_webhook_url(url, require_https=require_https)
+    except UnsafeUrlError as exc:
+        raise WebhookError(str(exc)) from exc
     if any(e not in ALL_EVENTS for e in events):
         raise WebhookError("unknown event type")
 
@@ -169,6 +171,25 @@ async def _deliver(
                     response_code=None,
                     response_body=None,
                     error="missing secret",
+                )
+        return
+
+    settings_for_check = get_settings()
+    try:
+        validate_webhook_url(
+            url, require_https=settings_for_check.environment == "production"
+        )
+    except UnsafeUrlError as exc:
+        async with session_scope() as session:
+            delivery = await session.get(WebhookDelivery, delivery_id)
+            if delivery is not None:
+                await repository.update_delivery_status(
+                    session,
+                    delivery,
+                    status=WebhookDeliveryStatus.DROPPED,
+                    response_code=None,
+                    response_body=None,
+                    error=f"unsafe url: {exc}",
                 )
         return
 
