@@ -79,3 +79,8 @@ show_missing = true
 
 [tool.bandit]
 exclude_dirs = ["tests", "alembic", ".venv"]
+
+[dependency-groups]
+dev = [
+    "pip-audit>=2.10.0",
+]
