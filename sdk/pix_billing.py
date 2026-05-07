@@ -264,6 +264,12 @@ class _Webhooks(_Resource):
     def create(
         self, *, url: str, events: list[str], description: str = ""
     ) -> Webhook:
+        """Register a webhook endpoint.
+
+        The ``secret`` field on the response is returned **once** and never
+        again. Store it securely immediately — it cannot be recovered by any
+        API call. To rotate, delete the endpoint and create a new one.
+        """
         return Webhook.from_dict(
             self._client._request(
                 "POST",

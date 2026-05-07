@@ -188,6 +188,7 @@ class WebhookEndpoint(Base):
     url: Mapped[str] = mapped_column(String(2048), nullable=False)
     description: Mapped[str] = mapped_column(String(200), default="", nullable=False)
     events: Mapped[str] = mapped_column(Text, nullable=False)  # JSON list[str]
+    secret_encrypted: Mapped[str | None] = mapped_column(Text, nullable=True)
     secret_hash: Mapped[str] = mapped_column(String(128), nullable=False)
     active: Mapped[bool] = mapped_column(Boolean, default=True, nullable=False)
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utcnow)

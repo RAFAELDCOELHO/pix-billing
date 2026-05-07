@@ -55,6 +55,18 @@ Every request crosses every layer. Security controls live at the boundary they b
 - **Rotation**: `bootstrap_api_key()` creates new keys; deactivate old ones by flipping `active=False` (24h grace recommended).
 - **Live keys** disable sandbox-only endpoints (`POST /v1/charges/{id}/confirm` returns 403 in live mode).
 
+## Webhook secrets
+
+Secrets are generated with `secrets.token_urlsafe(32)` (256-bit entropy),
+encrypted at rest with AES-256-GCM using the application's master key,
+and stored in the database. The plaintext secret is returned **once** at
+creation and never stored or returned again. Signing uses decrypt-on-demand
+— the secret is decrypted in memory only during webhook delivery and
+immediately discarded after the HMAC has been computed. There is no
+in-process cache; deliveries survive a full restart with zero loss.
+
+To rotate a secret: delete the endpoint and create a new one.
+
 ## Webhook signatures
 
 Every outbound webhook carries:
@@ -97,7 +109,7 @@ The SDK ships [`sdk.pix_billing.verify_signature`](sdk/pix_billing.py) implement
 ## Known limitations
 
 - **Sandbox only.** `POST /v1/charges/{id}/confirm` simulates payment. Wire a real PSP webhook (Gerencianet, Asaas, OpenPIX) and disable manual confirm before going live.
-- **Webhook secrets** are kept in a process-local cache after creation. For multi-process deployments, move them to KMS / secret manager.
+- **Webhook secrets** are persisted encrypted in the DB (see "Webhook Secrets" below). Migrating the master key into a KMS / secret manager is recommended for multi-region deployments.
 - **Single tenant.** No multi-tenant isolation in this MVP — every API key sees every record. Add tenant scoping before sharing the deployment.
 - **In-memory rate limiter.** Replace with Redis token-bucket for multi-instance deployments.
 - **No 2FA / SSO.** Dashboard auth is HTTP Basic with the API key as password — sufficient for an internal operator dashboard, not a customer portal.

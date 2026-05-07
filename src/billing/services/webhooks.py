@@ -26,6 +26,7 @@ from src.billing.security import (
     constant_time_eq,
     fingerprint,
     get_audit_logger,
+    get_encryptor,
     hmac_sign,
 )
 from src.billing.url_safety import UnsafeUrlError, validate_webhook_url
@@ -45,24 +46,6 @@ class CreatedEndpoint:
 
     endpoint: WebhookEndpoint
     plaintext_secret: str
-
-
-# ─── secret storage ────────────────────────────────────────────────────────
-
-
-_secret_cache: dict[str, str] = {}
-"""Maps endpoint_id -> plaintext secret. In production, keep secrets in a
-proper KMS — for an MVP we hold them in memory after creation and on
-rotation. The hashed copy in the DB is the source of truth for verification.
-"""
-
-
-def _store_secret(endpoint_id: str, secret: str) -> None:
-    _secret_cache[endpoint_id] = secret
-
-
-def _load_secret(endpoint_id: str) -> str | None:
-    return _secret_cache.get(endpoint_id)
 
 
 # ─── public API ────────────────────────────────────────────────────────────
@@ -86,16 +69,17 @@ async def register_endpoint(
         raise WebhookError("unknown event type")
 
     secret = secrets.token_urlsafe(32)
+    encryptor = get_encryptor()
     endpoint = WebhookEndpoint(
         id=ids.new_webhook_id(),
         url=url,
         description=description[:200],
         events=",".join(events),
+        secret_encrypted=encryptor.encrypt(secret),
         secret_hash=fingerprint(secret),
         active=True,
     )
     await repository.create_webhook(session, endpoint)
-    _store_secret(endpoint.id, secret)
     get_audit_logger().emit(
         event_type="WEBHOOK_REGISTERED",
         actor_id="system",
@@ -156,11 +140,24 @@ async def _deliver(
     url: str,
     payload_json: str,
 ) -> None:
-    """Deliver one webhook with exponential-backoff retries."""
+    """Deliver one webhook with exponential-backoff retries.
+
+    The secret is loaded from the encrypted DB column on every call,
+    decrypted in memory just long enough to compute the HMAC, and
+    discarded immediately. Nothing persists between deliveries.
+    """
     settings = get_settings()
-    secret = _load_secret(endpoint_id) or ""
+    secret = ""  # nosec B105 — empty erases the secret
+    async with session_scope() as session:
+        endpoint_row = await session.get(WebhookEndpoint, endpoint_id)
+        if endpoint_row is not None and endpoint_row.secret_encrypted:
+            try:
+                secret = get_encryptor().decrypt(endpoint_row.secret_encrypted)
+            except (ValueError, KeyError) as exc:
+                log.warning("could not decrypt secret for %s: %s", endpoint_id, exc)
+                secret = ""  # nosec B105 - clear on decrypt failure
     if not secret:
-        log.warning("no secret cached for endpoint %s — delivery dropped", endpoint_id)
+        log.warning("no secret available for endpoint %s — delivery dropped", endpoint_id)
         async with session_scope() as session:
             delivery = await session.get(WebhookDelivery, delivery_id)
             if delivery is not None:
@@ -194,14 +191,19 @@ async def _deliver(
         return
 
     timestamp = str(int(datetime.now(UTC).timestamp()))
-    signed = f"{timestamp}.{payload_json}"
-    signature = hmac_sign(secret, signed)
-    headers = {
-        "Content-Type": "application/json",
-        "X-Pix-Signature": f"sha256={signature}",
-        "X-Pix-Timestamp": timestamp,
-        "User-Agent": "pix-billing/0.1",
-    }
+    try:
+        signed = f"{timestamp}.{payload_json}"
+        signature = hmac_sign(secret, signed)
+        headers = {
+            "Content-Type": "application/json",
+            "X-Pix-Signature": f"sha256={signature}",
+            "X-Pix-Timestamp": timestamp,
+            "User-Agent": "pix-billing/0.1",
+        }
+    finally:
+        # Drop the plaintext secret as soon as the signature has been computed.
+        secret = ""  # nosec B105 — empty erases the secret
+        del signed
 
     delays = [1, 4, 16]
     last_code: int | None = None
