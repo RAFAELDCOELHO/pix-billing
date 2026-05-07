@@ -36,6 +36,9 @@ class Settings(BaseSettings):
     rate_limit_write_per_min: int = Field(default=100)
     rate_limit_read_per_min: int = Field(default=300)
 
+    sentry_dsn: str | None = None
+    cloudflare_only: bool = False
+
 
 @lru_cache(maxsize=1)
 def get_settings() -> Settings:

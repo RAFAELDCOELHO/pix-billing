@@ -6,17 +6,35 @@ import logging
 from collections.abc import AsyncIterator
 from contextlib import asynccontextmanager
 
+import sentry_sdk
 from fastapi import FastAPI, Request
 from fastapi.responses import JSONResponse
+from sentry_sdk.integrations.fastapi import FastApiIntegration
+from sentry_sdk.integrations.starlette import StarletteIntegration
 
 from src.api.billing_routes import router as billing_router
 from src.api.dashboard_routes import router as dashboard_router
 from src.api.security_headers import SecurityHeadersMiddleware
 from src.billing.config import get_settings
 from src.billing.db import dispose_db, init_db
+from src.billing.middleware import CloudflareMiddleware
 from src.billing.scheduler import start_scheduler, stop_scheduler
 
 log = logging.getLogger("pix_billing.app")
+
+_settings = get_settings()
+
+if _settings.sentry_dsn:
+    sentry_sdk.init(
+        dsn=_settings.sentry_dsn,
+        integrations=[
+            StarletteIntegration(transaction_style="endpoint"),
+            FastApiIntegration(transaction_style="endpoint"),
+        ],
+        traces_sample_rate=0.1,
+        send_default_pii=False,
+        environment="production" if _settings.cloudflare_only else "development",
+    )
 
 
 @asynccontextmanager
@@ -42,6 +60,7 @@ def create_app() -> FastAPI:
         lifespan=lifespan,
     )
     app.add_middleware(SecurityHeadersMiddleware)
+    app.add_middleware(CloudflareMiddleware, cloudflare_only=_settings.cloudflare_only)
     app.include_router(billing_router)
     app.include_router(dashboard_router)
 
