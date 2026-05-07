@@ -266,9 +266,26 @@ async def _deliver(
             )
 
 
-def verify_signature(secret: str, payload: str, timestamp: str, signature_header: str) -> bool:
-    """Verify ``X-Pix-Signature`` for an incoming webhook (helper for SDK users)."""
+MAX_WEBHOOK_AGE_SECONDS = 300
+
+
+def verify_signature(
+    secret: str,
+    payload: str,
+    timestamp: str,
+    signature_header: str,
+    *,
+    max_age_seconds: int = MAX_WEBHOOK_AGE_SECONDS,
+) -> bool:
+    """Verify ``X-Pix-Signature`` and reject replays older than 5 minutes."""
     if not signature_header.startswith("sha256="):
+        return False
+    try:
+        ts = float(timestamp)
+    except ValueError:
+        return False
+    age = abs(datetime.now(UTC).timestamp() - ts)
+    if age > max_age_seconds:
         return False
     expected = hmac_sign(secret, f"{timestamp}.{payload}")
     return constant_time_eq(expected, signature_header.split("=", 1)[1])

@@ -77,6 +77,11 @@ def _check_bucket(scope: str, key_id: str, limit_per_min: int) -> None:
     bucket.append(now)
 
 
+def enforce_customer_charge_limit(customer_id: str, limit_per_min: int = 10) -> None:
+    """Anti-fraud: cap charge creation to ``limit_per_min`` per customer."""
+    _check_bucket("charge_per_customer", customer_id, limit_per_min)
+
+
 def rate_limit(
     scope: str, *, write: bool = False
 ) -> Callable[[AuthContext], Awaitable[AuthContext]]:

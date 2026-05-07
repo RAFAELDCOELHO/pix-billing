@@ -6,13 +6,17 @@ import logging
 from collections.abc import AsyncIterator
 from contextlib import asynccontextmanager
 
-from fastapi import FastAPI
+from fastapi import FastAPI, Request
+from fastapi.responses import JSONResponse
 
 from src.api.billing_routes import router as billing_router
 from src.api.dashboard_routes import router as dashboard_router
+from src.api.security_headers import SecurityHeadersMiddleware
 from src.billing.config import get_settings
 from src.billing.db import dispose_db, init_db
 from src.billing.scheduler import start_scheduler, stop_scheduler
+
+log = logging.getLogger("pix_billing.app")
 
 
 @asynccontextmanager
@@ -37,8 +41,18 @@ def create_app() -> FastAPI:
         description="Open-source billing API for Brazilian PIX payments.",
         lifespan=lifespan,
     )
+    app.add_middleware(SecurityHeadersMiddleware)
     app.include_router(billing_router)
     app.include_router(dashboard_router)
+
+    @app.exception_handler(Exception)
+    async def _scrub_unhandled(request: Request, exc: Exception) -> JSONResponse:
+        """Never leak stack traces or DB errors to clients."""
+        log.exception("unhandled error on %s %s", request.method, request.url.path)
+        return JSONResponse(
+            status_code=500,
+            content={"error": "internal_error", "message": "an unexpected error occurred"},
+        )
 
     @app.get("/health", tags=["meta"])
     async def health() -> dict[str, str]:

@@ -331,16 +331,38 @@ class PixBilling:
         return resp.json()
 
 
-def verify_signature(secret: str, payload: str, timestamp: str, signature_header: str) -> bool:
+MAX_WEBHOOK_AGE_SECONDS = 300
+
+
+def verify_signature(
+    secret: str,
+    payload: str,
+    timestamp: str,
+    signature_header: str,
+    *,
+    max_age_seconds: int = MAX_WEBHOOK_AGE_SECONDS,
+) -> bool:
     """Verify a webhook signature on the receiver side.
+
+    Rejects payloads older than ``max_age_seconds`` (default 5 minutes) to
+    prevent replay attacks.
 
     Args:
         secret: Plaintext secret returned when the webhook was registered.
         payload: Raw request body as a string (do not re-serialize).
         timestamp: Value of ``X-Pix-Timestamp`` header.
         signature_header: Value of ``X-Pix-Signature`` header (e.g. ``sha256=…``).
+        max_age_seconds: Reject payloads older than this many seconds.
     """
+    import time
+
     if not signature_header.startswith("sha256="):
+        return False
+    try:
+        ts = float(timestamp)
+    except ValueError:
+        return False
+    if abs(time.time() - ts) > max_age_seconds:
         return False
     expected = hmac.new(
         secret.encode("utf-8"),

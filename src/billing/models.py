@@ -90,7 +90,8 @@ class Customer(Base):
 
     id: Mapped[str] = mapped_column(String(40), primary_key=True)
     name: Mapped[str] = mapped_column(String(200), nullable=False)
-    email: Mapped[str] = mapped_column(String(320), nullable=False, index=True)
+    email_encrypted: Mapped[str] = mapped_column(Text, nullable=False)
+    email_fingerprint: Mapped[str] = mapped_column(String(64), nullable=False, index=True)
     document_encrypted: Mapped[str] = mapped_column(Text, nullable=False)
     document_type: Mapped[DocumentType] = mapped_column(String(8), nullable=False)
     document_fingerprint: Mapped[str] = mapped_column(String(64), nullable=False, index=True)

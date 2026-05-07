@@ -7,7 +7,13 @@ from typing import Any
 from fastapi import APIRouter, Depends, HTTPException, status
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from src.api.auth import AuthContext, authenticate, get_session, rate_limit
+from src.api.auth import (
+    AuthContext,
+    authenticate,
+    enforce_customer_charge_limit,
+    get_session,
+    rate_limit,
+)
 from src.api.schemas import (
     ChargeCreate,
     ChargeOut,
@@ -58,11 +64,12 @@ def _charge_out(c: Charge) -> ChargeOut:
 def _customer_out(cu: Customer) -> CustomerOut:
     encryptor = get_encryptor()
     digits = encryptor.decrypt(cu.document_encrypted)
+    email_plain = encryptor.decrypt(cu.email_encrypted)
     masked = mask_cpf(digits) if cu.document_type.value == "CPF" else mask_cnpj(digits)
     return CustomerOut(
         id=cu.id,
         name=cu.name,
-        email_masked=mask_email(cu.email),
+        email_masked=mask_email(email_plain),
         document_type=cu.document_type.value,
         document_masked=masked,
         metadata=decode_metadata(cu.extra_metadata),
@@ -125,6 +132,8 @@ async def create_charge(
     ctx: AuthContext = Depends(rate_limit("charges", write=True)),
 ) -> ChargeOut:
     """Issue a fresh PIX QR code for ``amount`` cents."""
+    if body.customer_id:
+        enforce_customer_charge_limit(body.customer_id)
     try:
         charge = await charge_service.create_charge(
             session,

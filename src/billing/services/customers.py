@@ -39,10 +39,12 @@ async def create_customer(
         raise CustomerError(str(exc)) from exc
 
     encryptor = get_encryptor()
+    normalized_email = email.strip().lower()
     customer = Customer(
         id=ids.new_customer_id(),
         name=name.strip(),
-        email=email.strip().lower(),
+        email_encrypted=encryptor.encrypt(normalized_email),
+        email_fingerprint=fingerprint(normalized_email),
         document_encrypted=encryptor.encrypt(digits),
         document_type=DocumentType(doc_type),
         document_fingerprint=fingerprint(digits),
