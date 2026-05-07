@@ -1,0 +1,17 @@
+PIX Billing Stack — Project Conventions
+
+- All monetary values in Cents (int), never float.
+- All I/O functions must be async.
+- Pydantic v2 models for all API shapes.
+- No bare except clauses — catch specific exceptions.
+- Every public function needs a docstring.
+- HMAC-SHA256 for all webhook signatures.
+- Encrypt PII fields at rest using src/core/crypto.py.
+- Never log raw CPF, CNPJ, or email — always masked.
+- Import from src.core.* freely, never modify it.
+- Test file for every new module before considering it done.
+- Layered architecture: API → Service → Repository → Core. No cross-layer imports.
+- Strict typing: mypy strict, Pydantic v2, no `Any`.
+- All DB writes transactional. Idempotency keys on charge creation.
+- Soft deletes only — add `deleted_at` instead of DELETE FROM.
+- English everywhere — code, comments, commits, docs.
