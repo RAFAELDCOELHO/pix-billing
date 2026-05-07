@@ -48,9 +48,13 @@ def new_delivery_id() -> str:
 
 
 def new_api_key(live: bool = False) -> str:
-    """Generate a fresh API key (sandbox or live)."""
+    """Generate a fresh API key (sandbox or live).
+
+    Uses ``secrets.token_urlsafe(32)`` — 256 bits of entropy, far more than
+    a UUID4 (122 bits) and resistant to enumeration attacks.
+    """
     prefix = "pk_live_" if live else "pk_test_"
-    return prefix + secrets.token_urlsafe(24).replace("-", "").replace("_", "")[:28]
+    return prefix + secrets.token_urlsafe(32)
 
 
 def new_api_key_id() -> str:
